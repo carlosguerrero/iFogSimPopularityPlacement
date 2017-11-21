@@ -48,6 +48,8 @@ public class ModulePlacementPopularity extends ModulePlacement {
 //    HashMap<AppModule, Double> moduleEdgeRate;
 
 //    Map<AppEdge, Double> appEdgeToRate = new HashMap<AppEdge, Double>();
+	
+	protected ModuleMapping moduleMapping;
     protected List<Sensor> sensors;  // List of sensors
     protected List<Actuator> actuators;  //List of actuators
     protected HashMap<String, HashMap<String, Double>> mapModRateValues = new HashMap<String, HashMap<String,Double>>();  //Calculated value for the request rate that arrives to each module from each single (1.0) request to each incoming Tuple from a sensor
@@ -80,6 +82,7 @@ public class ModulePlacementPopularity extends ModulePlacement {
         this.setDeviceToModuleMap(new HashMap<Integer, List<AppModule>>());
         this.sensors = sensors;
         
+        this.moduleMapping = moduleMapping;
         
 	    	for(FogDevice dev : getFogDevices()){
 				currentCpuLoad.put(dev, 0.0);
@@ -97,15 +100,92 @@ public class ModulePlacementPopularity extends ModulePlacement {
         calculateModuleOrder();
         calculateClosure();
 
-        
+       
+       mapModulesPreviouslyMapped(); 
         
        mapModules();
+       
+       
+       calculate_hop_count();
+       
+
+       
+    }
+    
+    protected void calculate_hop_count() {
+       
+        double weighted_hop_count = 0.0;
+        double weighted_ratio = 0.0;
+        double hop_count = 0.0;
+        double num_evaluations = 0.0;
+    	
+    	
+       for (Sensor sensor : sensors) {
+    	   		for (AppModule mod : getApplication().getModules()) {
+    	   			Double ratioMod = mapModRateValues.get(mod.getName()).get(sensor.getTupleType());
+    	   			if (ratioMod!=null) {
+        	   			Double ratioSen = 1.0/sensor.getTransmitDistribution().getMeanInterTransmitTime();
+        	   			Double ratio = ratioMod * ratioSen;
+//    	   				System.out.println("tupla:"+sensor.getTupleType());
+//    	   				System.out.println("mod:"+mod.getName());
+//    	   				System.out.println("ratemod:"+mapModRateValues.get(mod.getName()).get(sensor.getTupleType()));;
+//        	   			System.out.println("ratetot:"+ratio);
+    	   				FogDevice mobile =getFogDeviceById(sensor.getGatewayDeviceId());
+    	   				num_evaluations ++;
+
+    	   				
+    	   				double hc = hopCount(mobile,mod.getName()); //the mobile to which the sensor is connected it is not considered
+//        	   			System.out.println("hc:"+hc);
+        	   			
+//        	   			System.out.println((double)((double)ratio*(double)hc));
+    	   				hop_count += hc;
+        	   			weighted_hop_count += (double)((double)ratio*(double)hc);
+        	   			weighted_ratio += ratio;
+    	   			}
+	    	   		 
+	    	   		
+    	   		}
+       }
+       
+//       System.out.println("t"+weighted_hop_count);
+//       System.out.println("t"+weighted_ratio);
+       weighted_hop_count = (double)((double)weighted_hop_count/ (double)weighted_ratio);
+       hop_count = hop_count/num_evaluations;
+       System.out.println("Total average weighted hop count: "+weighted_hop_count);
+       System.out.println("Total average hop count: "+hop_count);
         
     }
     
-    protected void removePreAllocate(FogDevice dev, String mod) {
-    		List<String> currentModules = currentModuleMap.get(dev);
-    		currentModules.remove(mod);
+//    protected void removePreAllocate(FogDevice dev, String mod) {
+//    		List<String> currentModules = currentModuleMap.get(dev);
+//    		currentModules.remove(mod);
+//    }
+    
+    
+    protected int hopCount(FogDevice dev, String modName) {
+    	
+    		if (dev.getLevel()==0) {
+    			return 0;
+    		}
+    		if (currentModuleMap.get(dev).contains(modName)) {
+    			return 0;
+    		}
+    	
+    		return 1+hopCount(getFogDeviceById(dev.getParentId()),modName);
+    	
+    }
+    
+    protected void mapModulesPreviouslyMapped() {
+    	
+		for(String deviceName : moduleMapping.getModuleMapping().keySet()){
+			for(String moduleName : moduleMapping.getModuleMapping().get(deviceName)){
+				int deviceId = CloudSim.getEntityId(deviceName);
+				
+				PreAllocate(getFogDeviceById(deviceId),moduleName);
+
+			}
+		}
+    	
     }
     
     
@@ -201,13 +281,17 @@ public class ModulePlacementPopularity extends ModulePlacement {
 			    		List<String> modClosure = mapModuleClosure.get(mod);
 			    		List<String> allocModClosure = new ArrayList<String>();
 			    		Double tmpRate = 0.0;
+			    		int numMod = 0;
 			    		for (String s : modClosure) {
 			    			if (currentModules.contains(s)) {
 			    				allocModClosure.add(s);
 			    				
 			    				tmpRate += allocModRate.get(s);
+			    				numMod ++;
 			    			}
 			    		}
+			    		
+			    		tmpRate = tmpRate / (double)numMod;
 			    		
 			    		if (tmpRate < minRate) {
 			    			minClosure = allocModClosure;
@@ -273,13 +357,66 @@ public class ModulePlacementPopularity extends ModulePlacement {
 	    	return allocModRates;
     }
     
+    
+    protected void atToPendingList(Pair<FogDevice,String> pair) {
+    		if (!modulesToPlace.contains(pair)) {
+    			modulesToPlace.add(pair);  
+    		}
+    		
+    }
+    
+    protected void sendToFather(FogDevice dev, String modName, double resourcesStilNeeded) {
+    	
+    		Pair<FogDevice,String> pairFather;
+    		FogDevice father = getFogDeviceById(dev.getParentId());
+    		
+    		List<String> invertedClosure = new ArrayList<String>();
+    		
+    		for (String consummedMod : mapModuleClosure.get(modName)) {
+    			invertedClosure.add(consummedMod);
+    		}
+    		
+    		
+    		Collections.reverse(invertedClosure);
+    		
+    		for (String consummedMod : invertedClosure) {
+    			if ( (currentModuleMap.get(dev).contains(consummedMod)) && (resourcesStilNeeded > 0.0) ) {
+	    	    		pairFather = new Pair<FogDevice,String>(father,consummedMod);
+	    	    		atToPendingList(pairFather);			
+	    	    		currentModuleMap.get(dev).remove(consummedMod);
+	    	    		
+//	    	    		System.out.println("Removed from pre-allocated list the module "+consummedMod+" in device "+dev.getName()+" due to a sendToFather of a preconsummed service");
+    				
+	    	    		Double freededRes = calculateResourceUsage(dev,consummedMod);
+	    	    		Double currentRes = currentCpuLoad.get(dev);
+	    	    		currentRes -= freededRes;
+	    	    		currentCpuLoad.put(dev, currentRes);
+	    	    		resourcesStilNeeded -= freededRes;
+	    	    		
+    			}
+    		}
+    		
+
+    		//DEBEMOS DE VOLVER A PROBAR DE COLOCAR EL MODULE YA QUE QUIZAS LOS QUE ACABO DE ELIMINAR ERAN DE MAYOR REQUEST, PERO AL ELIMINARLS, ME QUEDAN RESOURCES
+    		if (resourcesStilNeeded > 0) {  //Solo lo enviamos al padre si quitando los del clousure no hemos liberado suficiente 
+	    		pairFather = new Pair<FogDevice,String>(father,modName);
+	    		atToPendingList(pairFather);
+			modulesToPlace.remove(0);
+    		} //El else sería que sí que hemos eliminado suficientes, y tendríamos que volver a mirar si lo alojamos. Basta simplemente no eliminar el elemento del modulestoplace y se volvera a evaluar su allocation en este device.
+    		else {
+//    			System.out.println("Module "+modName+" in device "+dev.getName()+" keeped to the next iteration due to preconsummed service deallocations");
+    		}
+    		
+    		
+    }
+    
     protected void Placement() {
     	
     		int numOptExecutions = 0;
     	
     		while (modulesToPlace.size()>0) {
     			
-    			System.out.println("===================================== "+numOptExecutions);
+//    			System.out.println("===================================== "+numOptExecutions);
     			numOptExecutions ++;
     			Pair<FogDevice,String> pair = modulesToPlace.get(0);
     			FogDevice dev = pair.getFirst();
@@ -287,8 +424,9 @@ public class ModulePlacementPopularity extends ModulePlacement {
     			int devMips = dev.getHost().getTotalMips();
     			Double currentMips = currentCpuLoad.get(dev);
     			
-    			System.out.println("Starting with allocation of module "+modName+" in device "+dev.getName());
+//    			System.out.println("Starting with allocation of module "+modName+" in device "+dev.getName());
     			
+
     			
     			List<String> currentModules = currentModuleMap.get(dev);
     			if (currentModules == null) {
@@ -296,39 +434,42 @@ public class ModulePlacementPopularity extends ModulePlacement {
     				currentModuleMap.put(dev, currentModules);
     			}
     			
+    			
 
 			if (currentModules.contains(modName)) { //The module is already in the device
 				//TODO Update the usage ?????
-				System.out.println("Module "+modName+" in device "+dev.getName()+" already allocated, so removed form toAllocate list");
+//				System.out.println("Module "+modName+" in device "+dev.getName()+" already allocated, so removed form toAllocate list");
 				modulesToPlace.remove(0);
 			}else {
 				if (dev.getLevel()==0) {
-					System.out.println("Module "+modName+" in device "+dev.getName()+" allocated because the device is the cloud");
+//					System.out.println("Module "+modName+" in device "+dev.getName()+" allocated because the device is the cloud");
 
 					currentModules.add(modName);//the device is the cloud
 					modulesToPlace.remove(0);
 				}else {
 					double requiredResources = calculateResourceUsage(dev,modName);
-//					System.out.println("REQUIRED:"+requiredResources);
-//					System.out.println("AVAILABL:"+devMips);
+//		    			System.out.println("Total dev available CPU MIPS "+devMips);
+//		    			System.out.println("Already allocated   CPU MIPS "+currentMips);
+//		    			System.out.println("Module required     CPU MIPS "+requiredResources);
+
 					
 					if (devMips < requiredResources) {
-						System.out.println("Module "+modName+" in device "+dev.getName()+" send to father because total resources not enough");
-
-						Pair<FogDevice,String> pairFather = new Pair<FogDevice,String>(getFogDeviceById(dev.getParentId()),modName);
-						modulesToPlace.add(pairFather);
-						modulesToPlace.remove(0);
+//						System.out.println("Module "+modName+" in device "+dev.getName()+" send to father because total resources not enough");
+//				    		Pair<FogDevice,String> pairFather = new Pair<FogDevice,String>(getFogDeviceById(dev.getParentId()),modName);
+//				    		modulesToPlace.add(pairFather);
+						sendToFather(dev, modName, Double.MAX_VALUE);
+//						modulesToPlace.remove(0);
 						
 					}else {
 						
 						double availableMips = devMips - currentMips;
 						
 						if ( availableMips > requiredResources) {
-							System.out.println("Module "+modName+" in device "+dev.getName()+" allocated because enough resources");
+//							System.out.println("Module "+modName+" in device "+dev.getName()+" allocated because enough resources");
 
 							PreAllocate(dev,modName);
 							currentCpuLoad.put(dev, currentMips + requiredResources);
-							System.out.println("Pre-allocated module "+modName+" in device "+dev.getName());
+//							System.out.println("Pre-allocated module "+modName+" in device "+dev.getName());
 							modulesToPlace.remove(0);
 							
 						}else {
@@ -374,28 +515,30 @@ public class ModulePlacementPopularity extends ModulePlacement {
 							}
 								
 							if (enoughWithDeallocation) {
-								System.out.println("Module "+modName+" in device "+dev.getName()+" allocated because other module closures with smaller rates are deallocated");
+//								System.out.println("Module "+modName+" in device "+dev.getName()+" allocated because other module closures with smaller rates are deallocated");
 
 								
-								for (String toDeallocMod : candidatesToDeallocate) {
+								for (String toDeallocMod : candidatesToDeallocate) {  //Every element in the toDeallocatedMod in the list is send to the father and removed from the currentModuleMap. The usage update is donde after the for with the already calculated usages values.
 									Pair<FogDevice,String> pairFather = new Pair<FogDevice,String>(getFogDeviceById(dev.getParentId()),toDeallocMod);
-									modulesToPlace.add(pairFather);
-									removePreAllocate(dev, toDeallocMod);
-									System.out.println("Removed from pre-allocated list the module "+toDeallocMod+" in device "+dev.getName());
+									atToPendingList(pairFather);
+									currentModuleMap.get(dev).remove(toDeallocMod);
+//									System.out.println("Removed from pre-allocated list the module "+toDeallocMod+" in device "+dev.getName());
 								}
-								currentMips -= deallocatedResources;
+								currentMips -= deallocatedResources;  //the deallocated resources are restados.
 								
 								PreAllocate(dev,modName);
 								currentCpuLoad.put(dev, currentMips + requiredResources);
-								System.out.println("Pre-allocated module "+modName+" in device "+dev.getName());
+//								System.out.println("Pre-allocated module "+modName+" in device "+dev.getName());
 								modulesToPlace.remove(0);									
 								
 							}else {
-								System.out.println("Module "+modName+" in device "+dev.getName()+" send to parent because not enough resources deallocating other closures");
+//								System.out.println("Module "+modName+" in device "+dev.getName()+" send to parent because not enough resources deallocating other closures");
 
-								Pair<FogDevice,String> pairFather = new Pair<FogDevice,String>(getFogDeviceById(dev.getParentId()),modName);
-								modulesToPlace.add(pairFather);
-								modulesToPlace.remove(0);
+//						    		Pair<FogDevice,String> pairFather = new Pair<FogDevice,String>(getFogDeviceById(dev.getParentId()),modName);
+//						    		modulesToPlace.add(pairFather);								
+								sendToFather(dev, modName, requiredResources-availableMips);
+//								modulesToPlace.remove(0);
+
 							}
 							
 
@@ -435,7 +578,7 @@ public class ModulePlacementPopularity extends ModulePlacement {
 		for (FogDevice gw : gateways) {
 			for(String modName : moduleOrder) {
 				Pair<FogDevice,String> pair = new Pair<FogDevice,String>(gw,modName);
-				modulesToPlace.add(pair);
+				atToPendingList(pair);
 			}
 		}
 		
@@ -517,7 +660,9 @@ public class ModulePlacementPopularity extends ModulePlacement {
 		}
 	
 		
-		Collections.reverse(moduleOrder);
+		//REALMENTE EL ORDEN A HACER EL PLACEMENT DEBERIA SER DE LOS NO DEPENDIENTES HACIA ATRAS, ASI QUE NO TENGO QUE GIRAR EL LISTADO
+		
+//		Collections.reverse(moduleOrder);
 
 //    		for (String el : moduleOrder) {
 //    			System.out.println("########## "+el);

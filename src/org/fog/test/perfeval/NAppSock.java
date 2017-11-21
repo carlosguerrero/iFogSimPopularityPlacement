@@ -26,11 +26,13 @@ import org.fog.entities.Sensor;
 import org.fog.entities.Tuple;
 import org.fog.placement.Controller;
 import org.fog.placement.ModuleMapping;
+import org.fog.placement.ModulePlacement;
 import org.fog.placement.ModulePlacementEdgewards;
 import org.fog.placement.ModulePlacementMapping;
 import org.fog.placement.ModulePlacementPopularity;
 import org.fog.policy.AppModuleAllocationPolicy;
 import org.fog.scheduler.StreamOperatorScheduler;
+import org.fog.utils.Config;
 import org.fog.utils.FogLinearPowerModel;
 import org.fog.utils.FogUtils;
 import org.fog.utils.TimeKeeper;
@@ -47,133 +49,310 @@ public class NAppSock {
 	static List<Sensor> sensors = new ArrayList<Sensor>();
 	static List<Actuator> actuators = new ArrayList<Actuator>();
 	
-	static int numOfNetChildren = 2;
-	static int numOfUsersPerRouter = 4;
-	static int numOfNetworkLevels = 4;
-	static double EEG_TRANSMISSION_TIME = 5.1;
+	
+	
+	static List<Integer> configNumOfNetChildren = new ArrayList<Integer>();
+	static List<Integer> configNumOfUsersPerRouter = new ArrayList<Integer>();
+	static List<Integer> configNumOfNetwroksLevels = new ArrayList<Integer>();
+	static List<Integer> configNumOfRepeatedSubApps = new ArrayList<Integer>();
+	static List<String> configPlacementPolicy = new ArrayList<String>();
+	
+	
+	
+	static Integer numOfNetChildren = 3;
+	static int numOfUsersPerRouter = 2;
+	static int numOfNetworkLevels = 3;
 	static int numOfApps = 1;
-	static int numOfRepeatedSubApps = 2;
+	static int numOfRepeatedSubApps = 4;
+	static String placementPolicy = "ModulePlacementEdgewards";
+	static int finishTime = 3500;
+// 	static String placementPolicy = "ModulePlacementPopularity";
+	
 	private static boolean CLOUD = false;
+	
+//	static Integer[] subAppsRate={30,10,25,35,20,30,10,25,35,20};
+	static Integer[] subAppsRate={30,10,25,30,20,30,10,25,35,20};
+	
 	//static double EEG_TRANSMISSION_TIME = 10;
 	
 	public static void main(String[] args) {
 
 		Log.printLine("Starting Sock Shop...");
+		
+		
+		
+		
+        for(int counter = 0; counter < args.length; counter++){
+        	
+	    		if (args[counter].startsWith("p=")) {
+	    			placementPolicy = args[counter].substring(2);
+	    		}
+        		if (args[counter].startsWith("a=")) {
+        			numOfRepeatedSubApps = Integer.parseInt(args[counter].substring(2));
+        		}
+        		if (args[counter].startsWith("l=")) {
+        			numOfNetworkLevels = Integer.parseInt(args[counter].substring(2));
+        		}
+        		if (args[counter].startsWith("u=")) {
+        			numOfUsersPerRouter = Integer.parseInt(args[counter].substring(2));
+        		}
+        		if (args[counter].startsWith("c=")) {
+        			numOfNetChildren = Integer.parseInt(args[counter].substring(2));
+        		}
+        		if (args[counter].startsWith("f=")) {
+        			finishTime = Integer.parseInt(args[counter].substring(2));
+        		}
 
-		try {
-			Log.disable();
-			int num_user = 1; // number of cloud users
-			Calendar calendar = Calendar.getInstance();
-			boolean trace_flag = false; // mean trace events
 
-			CloudSim.init(num_user, calendar, trace_flag);
-			
-			
-			String[] appId = new String[numOfApps];
-			FogBroker[] broker = new FogBroker[numOfApps];
-			Application[] application = new Application[numOfApps];
-			ModuleMapping[] moduleMapping = new ModuleMapping[numOfApps];
-			
-			
-			createFogDevices();
-			
-			int currentApp=0;
-			
-			for (currentApp=0;currentApp<numOfApps;currentApp++) {
-				appId[currentApp] = "/sock_"+currentApp;
-			}
-			//OK
-
-			
-			for (currentApp=0;currentApp<numOfApps;currentApp++) {
-				broker[currentApp] = new FogBroker("broker_"+currentApp);
-			}
-			//OK
-
-			
-			for (currentApp=0;currentApp<numOfApps;currentApp++) {
-				application[currentApp] = createApplication(appId[currentApp], broker[currentApp].getId());
-			}
-			//OK
-
-			for (currentApp=0;currentApp<numOfApps;currentApp++) {
-				application[currentApp].setUserId(broker[currentApp].getId());
-			}
-			//OK
-
-			
-			
-			for (currentApp=0;currentApp<numOfApps;currentApp++) {
-				createEdgeDevices(broker[currentApp].getId(), appId[currentApp]);
-			}
-			//OK
-
-			
-			for (currentApp=0;currentApp<numOfApps;currentApp++) {
-				moduleMapping[currentApp] = ModuleMapping.createModuleMapping();
-			}
-			//OK
-
-			
-			for (currentApp=0;currentApp<numOfApps;currentApp++) {
-				if(CLOUD){
-					// if the mode of deployment is cloud-based
-					for (int i=0; i<numOfRepeatedSubApps; i++) {
-						
-						String currentAppId = appId[currentApp] +"/"+i;
-						moduleMapping[currentApp].addModuleToDevice("front_end"+currentAppId, "cloud"); // placing all instances of Object Detector module in the Cloud
-						moduleMapping[currentApp].addModuleToDevice("login"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
-						moduleMapping[currentApp].addModuleToDevice("accounts"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
-						moduleMapping[currentApp].addModuleToDevice("catalogue"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
-						moduleMapping[currentApp].addModuleToDevice("orders"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
-						moduleMapping[currentApp].addModuleToDevice("payment"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
-						moduleMapping[currentApp].addModuleToDevice("shipping"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
-						moduleMapping[currentApp].addModuleToDevice("cart"+currentAppId, "cloud");
-					}
-				}				
-			}
-			//OK
-			
-			for(FogDevice device : fogDevices){
-				if(device.getName().startsWith("m")){
-					for (currentApp=0;currentApp<numOfApps;currentApp++) {
-						for (int i=0; i<numOfRepeatedSubApps; i++) {
+        }
+		
+        Config.MAX_SIMULATION_TIME= finishTime;
+		
+//		configNumOfNetChildren.add(2);
+//		configNumOfUsersPerRouter.add(2);
+//		configNumOfNetwroksLevels.add(3);
+//		configNumOfRepeatedSubApps.add(2);
+//		
+//		configPlacementPolicy.add("ModulePlacementPopularity");
+//		configPlacementPolicy.add("ModulePlacementEdgewards");
+//		configPlacementPolicy.add("ModulePlacementPopularity");
+//		configPlacementPolicy.add("ModulePlacementEdgewards");
+//		
+//		
+//		for(Integer numOfNetChildrenTMP : configNumOfNetChildren) {
+//			for (Integer numOfUsersPerRouterTMP : configNumOfUsersPerRouter) {
+//				for (Integer numOfNetworkLevelsTMP : configNumOfNetwroksLevels) {
+//					for (Integer numOfRepeatedSubAppsTMP : configNumOfRepeatedSubApps) {
+//						for (String placementPolicyTMP : configPlacementPolicy ) {
+//							
+//							
+//							
+//							fogDevices = new ArrayList<FogDevice>();
+//							users = new ArrayList<FogDevice>();
+//							sensors = new ArrayList<Sensor>();
+//							actuators = new ArrayList<Actuator>();
+//							
+//							
+//							numOfNetChildren = numOfNetChildrenTMP;
+//							numOfUsersPerRouter = numOfUsersPerRouterTMP;
+//							numOfNetworkLevels = numOfNetworkLevelsTMP;
+//							numOfRepeatedSubApps = numOfRepeatedSubAppsTMP;
+//							placementPolicy = placementPolicyTMP;
 							
-							String currentAppId = appId[currentApp] +"/"+i;
-							moduleMapping[currentApp].addModuleToDevice("edge_router"+currentAppId, device.getName());
-					
-						}
-					}
-				}
-			}
-			//OK
-			
-			Controller controller = new Controller("master-controller", fogDevices, sensors, 
-					actuators);
-			
-			for (currentApp=0;currentApp<numOfApps;currentApp++) {
-				controller.submitApplication(application[currentApp], 
-						(CLOUD)?(new ModulePlacementMapping(fogDevices, application[currentApp], moduleMapping[currentApp]))
-//								:(new ModulePlacementEdgewards(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp])));				
-								:(new ModulePlacementPopularity(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp])));				
-			}
-			
-//			for (FogDevice f : fogDevices) {
-//				System.out.println(f.getId() +":"+f.getName()+":level="+f.getLevel());
-//			}
-			
+							
+							
+							
+							try {
+								Log.disable();
+								int num_user = 1; // number of cloud users
+								Calendar calendar = Calendar.getInstance();
+								boolean trace_flag = false; // mean trace events
 
-			TimeKeeper.getInstance().setSimulationStartTime(Calendar.getInstance().getTimeInMillis());
+								
+								
+								
+								CloudSim.init(num_user, calendar, trace_flag);
+								
+								
+								String[] appId = new String[numOfApps];
+								FogBroker[] broker = new FogBroker[numOfApps];
+								Application[] application = new Application[numOfApps];
+								ModuleMapping[] moduleMapping = new ModuleMapping[numOfApps];
+								
+								
+								createFogDevices();
+								
+								int currentApp=0;
+								
+								for (currentApp=0;currentApp<numOfApps;currentApp++) {
+									appId[currentApp] = "/_"+currentApp;
+								}
+								//OK
 
-//			CloudSim.startSimulation();
+								
+								for (currentApp=0;currentApp<numOfApps;currentApp++) {
+									broker[currentApp] = new FogBroker("broker_"+currentApp);
+								}
+								//OK
+
+								
+								for (currentApp=0;currentApp<numOfApps;currentApp++) {
+									application[currentApp] = createApplication(appId[currentApp], broker[currentApp].getId());
+								}
+								//OK
+
+								for (currentApp=0;currentApp<numOfApps;currentApp++) {
+									application[currentApp].setUserId(broker[currentApp].getId());
+								}
+								//OK
+
+								
+								
+								for (currentApp=0;currentApp<numOfApps;currentApp++) {
+									createEdgeDevices(broker[currentApp].getId(), appId[currentApp]);
+								}
+								//OK
+
+								
+								for (currentApp=0;currentApp<numOfApps;currentApp++) {
+									moduleMapping[currentApp] = ModuleMapping.createModuleMapping();
+								}
+								//OK
+
+								
+//								for (currentApp=0;currentApp<numOfApps;currentApp++) {
+////									if(CLOUD){
+////										// if the mode of deployment is cloud-based
+//										for (int i=0; i<numOfRepeatedSubApps; i++) {
+//											
+//											String currentAppId = appId[currentApp] +"/"+i;
+//											moduleMapping[currentApp].addModuleToDevice("edge_router"+currentAppId, "cloud"); // placing all instances of Object Detector module in the Cloud
+//											moduleMapping[currentApp].addModuleToDevice("front_end"+currentAppId, "cloud"); // placing all instances of Object Detector module in the Cloud
+//											moduleMapping[currentApp].addModuleToDevice("login"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
+//											moduleMapping[currentApp].addModuleToDevice("accounts"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
+//											moduleMapping[currentApp].addModuleToDevice("catalogue"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
+//											moduleMapping[currentApp].addModuleToDevice("orders"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
+//											moduleMapping[currentApp].addModuleToDevice("payment"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
+//											moduleMapping[currentApp].addModuleToDevice("shipping"+currentAppId, "cloud"); // placing all instances of Object Tracker module in the Cloud
+//											moduleMapping[currentApp].addModuleToDevice("cart"+currentAppId, "cloud");
+////										}
+//									}				
+//								}
+								//OK
+								
+//								for(FogDevice device : fogDevices){
+//									if(device.getName().startsWith("m")){
+//										for (currentApp=0;currentApp<numOfApps;currentApp++) {
+//											for (int i=0; i<numOfRepeatedSubApps; i++) {
+//												
+//												String currentAppId = appId[currentApp] +"/"+i;
+//												moduleMapping[currentApp].addModuleToDevice("edge_router"+currentAppId, device.getName());
+//										
+//											}
+//										}
+//									}
+//								}
+								//OK
+								
+								Controller controller = new Controller("master-controller", fogDevices, sensors, 
+										actuators);
+								
+								for (currentApp=0;currentApp<numOfApps;currentApp++) {
+									
+									//ModulePlacement modulePlacement = new ModulePlacementMapping(fogDevices, application[currentApp], moduleMapping[currentApp]);
+									ModulePlacement modulePlacement = null;
+									
+									if (placementPolicy.equals("ModulePlacementPopularity")) {
+										moduleMapping[currentApp] = ModuleMapping.createModuleMapping();
+										modulePlacement = new ModulePlacementPopularity(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp]);
+									}
+								
+									if (placementPolicy.equals("ModulePlacementEdgewards")) {
+										moduleMapping[currentApp] = ModuleMapping.createModuleMapping();
+										modulePlacement = new ModulePlacementEdgewards(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp]);
+									}
+
+									
+									controller.submitApplication(application[currentApp],modulePlacement);				
+
+//									controller.submitApplication(application[currentApp], 
+//											(CLOUD)?(new ModulePlacementMapping(fogDevices, application[currentApp], moduleMapping[currentApp]))
+////													:(new ModulePlacementEdgewards(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp])));				
+//													:(new ModulePlacementPopularity(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp])));				
+
+								
+								
+								}
+								
+//								for (FogDevice f : fogDevices) {
+//									System.out.println(f.getId() +":"+f.getName()+":level="+f.getLevel());
+//								}
+								
+
+								TimeKeeper.getInstance().setSimulationStartTime(Calendar.getInstance().getTimeInMillis());
+
+								//CloudSim.terminateSimulation(finishTime);  //termina la simulación tras 10 ms
+								
+								System.out.println("*****SIMULATION FOR*******");
+								System.out.println("numOfNetChildren:"+numOfNetChildren);
+								System.out.println("numOfUsersPerRouter:"+numOfUsersPerRouter);
+								System.out.println("numOfNetworkLevels:"+numOfNetworkLevels);
+								System.out.println("numOfRepeatedSubApps:"+numOfRepeatedSubApps);
+								System.out.println("placementPolicy:"+placementPolicy);
+								System.out.println("finishTime:"+finishTime);
+								System.out.println("*******************");
+							
+								
+								CloudSim.startSimulation();
+//								
+////								CloudSim.finishSimulation();
+////								CloudSim.runStop();
 //
-//			CloudSim.stopSimulation();
+								CloudSim.stopSimulation();
+								
 
-			Log.printLine("VRGame finished!");
-		} catch (Exception e) {
-			e.printStackTrace();
-			Log.printLine("Unwanted errors happen");
-		}
+								
+								//controller.printresults();
+								/*Public methor in class controller that executes
+								 * printTimeDetails()
+								 * printPowerDetails()
+								 * printCostDetails()
+								 * printNetworkUsageDetails()
+								 */
+
+								System.out.println("*****END OF SIMULATION*******");
+								System.out.println("numOfNetChildren:"+numOfNetChildren);
+								System.out.println("numOfUsersPerRouter:"+numOfUsersPerRouter);
+								System.out.println("numOfNetworkLevels:"+numOfNetworkLevels);
+								System.out.println("numOfRepeatedSubApps:"+numOfRepeatedSubApps);
+								System.out.println("placementPolicy:"+placementPolicy);
+								System.out.println("finishTime:"+finishTime);
+								System.out.println("*******************");
+								
+								
+								
+								Log.printLine("VRGame finished!");
+							} catch (Exception e) {
+								e.printStackTrace();
+								System.out.println("HA OCURRIDO UN EXCEPTION");
+								System.out.println("*****END OF SIMULATION*******");
+								System.out.println("numOfNetChildren:"+numOfNetChildren);
+								System.out.println("numOfUsersPerRouter:"+numOfUsersPerRouter);
+								System.out.println("numOfNetworkLevels:"+numOfNetworkLevels);
+								System.out.println("numOfRepeatedSubApps:"+numOfRepeatedSubApps);
+								System.out.println("placementPolicy:"+placementPolicy);
+								System.out.println("finishTime:"+finishTime);
+								System.out.println("*******************");
+								Log.printLine("Unwanted errors happen");
+							}							
+							
+							
+							
+							
+							
+							
+							
+							
+							
+							
+							
+							
+							
+//							
+//						}
+//					}
+//					
+//				}
+//			}
+//			
+//		}
+		
+		
+		
+		
+		
+
+
 	}
 
 	private static void createEdgeDevices(int userId, String appId) {
@@ -183,7 +362,7 @@ public class NAppSock {
 			for (int i=0; i<numOfRepeatedSubApps; i++) {
 				
 				String currentAppId = appId +"/"+i;
-				Sensor sensor = new Sensor("s-"+currentAppId+"-"+id, "REQUEST"+currentAppId, userId, appId, new DeterministicDistribution(5)); // inter-transmission time of camera (sensor) follows a deterministic distribution
+				Sensor sensor = new Sensor("s-"+currentAppId+"-"+id, "REQUEST"+currentAppId, userId, appId, new DeterministicDistribution(subAppsRate[i])); // inter-transmission time of camera (sensor) follows a deterministic distribution
 				sensors.add(sensor);
 				sensor.setGatewayDeviceId(user.getId());
 				sensor.setLatency(1.0);
@@ -275,7 +454,7 @@ public class NAppSock {
 	 * @param appId
 	 */
 	private static void createFogDevices() {
-		FogDevice cloud = createFogDevice("cloud", Long.MAX_VALUE, Integer.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 0, 0.01, 16*103, 16*83.25);
+		FogDevice cloud = createFogDevice("cloud", 4480000, 4000000, 10000, 10000,  0, 0.01, 16*103, 16*83.25);
 		cloud.setParentId(-1);
 		fogDevices.add(cloud);
 		FogDevice proxy = createFogDevice("proxy-server", 2800, 4000, 10000, 10000, 1, 0.0, 107.339, 83.4333);
@@ -288,7 +467,7 @@ public class NAppSock {
 	}
 
 	private static FogDevice addArea(String id, int parentId,int currentNetLevel){
-		FogDevice router = createFogDevice("d-"+id, 2800, 4000, 10000, 10000, 1+currentNetLevel, 0.0, 107.339, 83.4333);
+		FogDevice router = createFogDevice("d-"+id, 2800, 4000, 20000, 20000, 1+currentNetLevel, 0.0, 107.339, 83.4333);
 		fogDevices.add(router);
 		router.setParentId(parentId);
 		router.setUplinkLatency(2); // latency of connection between router and proxy server is 2 ms
@@ -308,7 +487,7 @@ public class NAppSock {
 	}
 	
 	private static FogDevice addUser(String id, int parentId, int netLevel){
-		FogDevice user = createFogDevice("m-"+id, 500, 1000, 10000, 10000, netLevel, 0, 87.53, 82.44);
+		FogDevice user = createFogDevice("m-"+id, 1, 1, 10000, 10000, netLevel, 0, 87.53, 82.44);
 		user.setParentId(parentId);
 		users.add(user);
 /*		Sensor sensor = new Sensor("s-"+id, "CAMERA", userId, appId, new DeterministicDistribution(5)); // inter-transmission time of camera (sensor) follows a deterministic distribution
@@ -346,8 +525,10 @@ public class NAppSock {
 		peList.add(new Pe(0, new PeProvisionerOverbooking(mips))); // need to store Pe id and MIPS Rating
 
 		int hostId = FogUtils.generateEntityId();
+//		long storage = 1000000; // host storage
+//		int bw = 10000;
 		long storage = 1000000; // host storage
-		int bw = 10000;
+		long bw = upBw+downBw;
 
 		PowerHost host = new PowerHost(
 				hostId,
@@ -456,33 +637,33 @@ public class NAppSock {
 			/*
 			 * Adding modules (vertices) to the application model (directed graph)
 			 */
-			application.addAppModule("front_end"+currentAppId, 1);
-			application.addAppModule("edge_router"+currentAppId, 1);
-			application.addAppModule("login"+currentAppId, 1);
-			application.addAppModule("accounts"+currentAppId, 1);
-			application.addAppModule("catalogue"+currentAppId, 1);
-			application.addAppModule("orders"+currentAppId, 1);
-			application.addAppModule("cart"+currentAppId, 1);
-			application.addAppModule("payment"+currentAppId, 1);
-			application.addAppModule("shipping"+currentAppId, 1);
+			application.addAppModule("front_end"+currentAppId, 10);
+			application.addAppModule("edge_router"+currentAppId, 10);
+			application.addAppModule("login"+currentAppId, 10);
+			application.addAppModule("accounts"+currentAppId, 10);
+			application.addAppModule("catalogue"+currentAppId, 10);
+			application.addAppModule("orders"+currentAppId, 10);
+			application.addAppModule("cart"+currentAppId, 10);
+			application.addAppModule("payment"+currentAppId, 10);
+			application.addAppModule("shipping"+currentAppId, 10);
 	//		application.addAppModule("kk"+currentAppId, 10);
 			
 			
 			/*
 			 * Connecting the application modules (vertices) in the application model (directed graph) with edges
 			 */
-			application.addAppEdge("REQUEST"+currentAppId, "edge_router"+currentAppId, 1000, 0.0, "REQUEST"+currentAppId, Tuple.UP, AppEdge.SENSOR); // adding edge from CAMERA (sensor) to Motion Detector module carrying tuples of type CAMERA
-			application.addAppEdge("edge_router"+currentAppId, "front_end"+currentAppId, 2000, 0.0, "BROWSE"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Motion Detector to Object Detector module carrying tuples of type MOTION_VIDEO_STREAM
-			application.addAppEdge("front_end"+currentAppId, "accounts"+currentAppId, 500, 0.0, "LOG_B"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to User Interface module carrying tuples of type DETECTED_OBJECT
-			application.addAppEdge("front_end"+currentAppId, "login"+currentAppId, 1000, 0.0, "IDENTIFY"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
-			application.addAppEdge("login"+currentAppId, "accounts"+currentAppId, 1000, 0.0, "LOG_U"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
-			application.addAppEdge("front_end"+currentAppId, "catalogue"+currentAppId, 1000, 0.0, "SELECT"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
-			application.addAppEdge("front_end"+currentAppId, "orders"+currentAppId, 1000, 0.0, "BUY"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
-			application.addAppEdge("front_end"+currentAppId, "cart"+currentAppId, 1000, 0.0, "SEE"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
-			application.addAppEdge("orders"+currentAppId, "cart"+currentAppId, 1000, 0.0, "ADD"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
-			application.addAppEdge("orders"+currentAppId, "payment"+currentAppId, 1000, 0.0, "PAY"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
-			application.addAppEdge("orders"+currentAppId, "shipping"+currentAppId, 1000, 0.0, "SEND"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
-			application.addAppEdge("orders"+currentAppId, "accounts"+currentAppId, 1000, 0.0, "LOG_O"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("REQUEST"+currentAppId, "edge_router"+currentAppId, 1000, 10.0, "REQUEST"+currentAppId, Tuple.UP, AppEdge.SENSOR); // adding edge from CAMERA (sensor) to Motion Detector module carrying tuples of type CAMERA
+			application.addAppEdge("edge_router"+currentAppId, "front_end"+currentAppId, 1000, 10.0, "BROWSE"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Motion Detector to Object Detector module carrying tuples of type MOTION_VIDEO_STREAM
+			application.addAppEdge("front_end"+currentAppId, "accounts"+currentAppId, 1000, 10.0, "LOG_B"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to User Interface module carrying tuples of type DETECTED_OBJECT
+			application.addAppEdge("front_end"+currentAppId, "login"+currentAppId, 1000, 10.0, "IDENTIFY"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("login"+currentAppId, "accounts"+currentAppId, 1000, 10.0, "LOG_U"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("front_end"+currentAppId, "catalogue"+currentAppId, 1000, 10.0, "SELECT"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("front_end"+currentAppId, "orders"+currentAppId, 1000, 10.0, "BUY"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("front_end"+currentAppId, "cart"+currentAppId, 1000, 10.0, "SEE"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("orders"+currentAppId, "cart"+currentAppId, 1000, 10.0, "ADD"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("orders"+currentAppId, "payment"+currentAppId, 1000, 10.0, "PAY"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("orders"+currentAppId, "shipping"+currentAppId, 1000, 10.0, "SEND"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
+			application.addAppEdge("orders"+currentAppId, "accounts"+currentAppId, 1000, 10.0, "LOG_O"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
 	//		application.addAppEdge("cart"+currentAppId, "kk"+currentAppId, 1000, 100, "KK1"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
 	//		application.addAppEdge("accounts"+currentAppId, "kk"+currentAppId, 1000, 100, "KK2"+currentAppId, Tuple.UP, AppEdge.MODULE); // adding edge from Object Detector to Object Tracker module carrying tuples of type OBJECT_LOCATION
 	
@@ -502,9 +683,9 @@ public class NAppSock {
 			application.addTupleMapping("orders"+currentAppId, "BUY"+currentAppId, "PAY"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
 			application.addTupleMapping("orders"+currentAppId, "BUY"+currentAppId, "SEND"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
 			application.addTupleMapping("orders"+currentAppId, "BUY"+currentAppId, "LOG_O"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
-			application.addTupleMapping("cart"+currentAppId, "ADD"+currentAppId, "KK1"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
-			application.addTupleMapping("cart"+currentAppId, "SEE"+currentAppId, "KK1"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
-	//		application.addTupleMapping("accounts"+currentAppId, "LOG_O"+currentAppId, "KK2"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
+//			application.addTupleMapping("cart"+currentAppId, "ADD"+currentAppId, "KK1"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
+//			application.addTupleMapping("cart"+currentAppId, "SEE"+currentAppId, "KK1"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
+//	//		application.addTupleMapping("accounts"+currentAppId, "LOG_O"+currentAppId, "KK2"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
 	//		application.addTupleMapping("accounts"+currentAppId, "LOG_U"+currentAppId, "KK2"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
 	//		application.addTupleMapping("accounts"+currentAppId, "LOG_B"+currentAppId, "KK2"+currentAppId, new FractionalSelectivity(1.0)); // 0.05 tuples of type MOTION_VIDEO_STREAM are emitted by Object Detector module per incoming tuple of type MOTION_VIDEO_STREAM
 	
@@ -515,9 +696,37 @@ public class NAppSock {
 			 */
 	//		final AppLoop loop1 = new AppLoop(new ArrayList<String>(){{add("motion_detector");add("object_detector");add("object_tracker");}});
 	//		final AppLoop loop2 = new AppLoop(new ArrayList<String>(){{add("object_tracker");add("PTZ_CONTROL");}});
-//			final AppLoop loop1 = new AppLoop(new ArrayList<String>(){{add("edge_router"+currentAppId);add("front_end"+currentAppId);add("login"+currentAppId);}});
+	//		final AppLoop loop1 = new AppLoop(new ArrayList<String>(){{add("edge_router"+currentAppId);add("front_end"+currentAppId);add("login"+currentAppId);}});
 //			loops .add(loop1);
+			
+			List<String> modules;
+			modules = new ArrayList<String>();
+			modules.add("edge_router"+currentAppId);
+			modules.add("front_end"+currentAppId);
+			modules.add("orders"+currentAppId);
+			modules.add("accounts"+currentAppId);
+
+			
+			AppLoop loop1 = new AppLoop(modules);
+			
+			
+//			modules = new ArrayList<String>();
+//
+//			modules.add("front_end"+currentAppId);
+//			modules.add("orders"+currentAppId);
+
+			
+//			AppLoop loop2 = new AppLoop(modules);
+			
+			loops.add(loop1);
+			
 		}	
+		
+//		final AppLoop loop1 = new AppLoop(new ArrayList<String>(){{add("EEG_1");add("client_1");add("concentration_calculator_1");add("client_1");add("DISPLAY_1");}});
+//		List<AppLoop> loops = new ArrayList<AppLoop>(){{add(loop1);}};
+//		application.setLoops(loops);
+		
+		
 		application.setLoops(loops);
 		return application;
 	}

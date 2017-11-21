@@ -133,7 +133,7 @@ public class NApps {
 
 			TimeKeeper.getInstance().setSimulationStartTime(Calendar.getInstance().getTimeInMillis());
 
-			CloudSim.terminateSimulation(10000);  //termina la simulación tras 10 ms
+			CloudSim.terminateSimulation(1000);  //termina la simulación tras 10 ms
 			
 			CloudSim.startSimulation();
 			

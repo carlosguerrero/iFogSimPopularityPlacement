@@ -1,5 +1,9 @@
 package org.fog.placement;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,8 +38,13 @@ public class ModulePlacementEdgewards extends ModulePlacement{
 	protected Map<Integer, Map<String, Double>> currentModuleLoadMap;
 	protected Map<Integer, Map<String, Integer>> currentModuleInstanceNum;
 	
+	public int numOfMigrations = 0;
+	public int numOfCloudPlacements = 0;
+	
 	public ModulePlacementEdgewards(List<FogDevice> fogDevices, List<Sensor> sensors, List<Actuator> actuators, 
-			Application application, ModuleMapping moduleMapping){
+			Application application, ModuleMapping moduleMapping,
+            Integer[] subAppsRate,
+            String resultsFN){
 		this.setFogDevices(fogDevices);
 		this.setApplication(application);
 		this.setModuleMapping(moduleMapping);
@@ -60,6 +69,94 @@ public class ModulePlacementEdgewards extends ModulePlacement{
 		calculate_hop_count();
 		
 		setModuleInstanceCountMap(getCurrentModuleInstanceNum());
+		
+       System.out.println("NUMERO de migrations:"+numOfMigrations);
+       System.out.println("NUMERO de cloud placements:"+numOfCloudPlacements);
+       
+       
+       
+/*       Integer maxLevel=0;
+       for(FogDevice dev : getFogDevices()){
+	   		maxLevel = Math.max(dev.getLevel(),maxLevel);
+       }
+  */     
+/*       currentCpuLoad = getCurrentCpuLoad();
+       for(FogDevice dev : getFogDevices()){
+    	   		System.out.println("Moduleload:"+currentCpuLoad.get(dev.getId()));
+    	   		System.out.println(maxLevel-dev.getLevel());
+       }
+ */   
+/*       for(FogDevice dev : getFogDevices()){
+	   		List<String> allocatedModules = currentModuleMap.get(dev.getId());
+	   		for (String moduleAlloc : allocatedModules) {
+	   			Integer appId = Integer.parseInt(moduleAlloc.substring(moduleAlloc.length()-1));
+	   		System.out.println("Module string:"+subAppsRate[appId]);
+	   		System.out.println(maxLevel-dev.getLevel());
+	   		}
+  }       
+  */
+       
+       try {       
+
+	       File archivoCPU = new File("./CPUedge"+resultsFN+".csv");
+	       File archivoRAT = new File("./RATedge"+resultsFN+".csv");
+	       BufferedWriter bwCPU;
+	       BufferedWriter bwRAT;
+	       
+	
+	       bwCPU = new BufferedWriter(new FileWriter(archivoCPU));
+		
+	       bwRAT = new BufferedWriter(new FileWriter(archivoRAT));
+	       
+	       bwCPU.write("hopcount;cpuusage;cputotal;numservices\n");
+	       bwRAT.write("hopcount;requestratio\n");
+	
+	
+	       
+	       
+	       
+	       
+	       
+	       Integer maxLevel=0;
+	       for(FogDevice dev : getFogDevices()){
+		   		maxLevel = Math.max(dev.getLevel(),maxLevel);
+	       }
+	       
+	       for(FogDevice dev : getFogDevices()){
+	    	   		Integer hopcountOF = maxLevel-dev.getLevel();
+	    	   		Double cpuusageOF = currentCpuLoad.get(dev.getId());
+	    	   		Integer cputotalOF = dev.getHost().getTotalMips();
+	    	   		Integer numservicesOF = currentModuleMap.get(dev.getId()).size();
+	    	   		if ( hopcountOF > 0 ) {
+	    	   			bwCPU.write(hopcountOF+";"+cpuusageOF+";"+cputotalOF+";"+numservicesOF+"\n");
+	    	   		}
+	    	   		
+	    	   		
+	       }
+	       
+	       for(FogDevice dev : getFogDevices()){
+	    	   		List<String> allocatedModules = currentModuleMap.get(dev.getId());
+	    	   		for (String moduleAlloc : allocatedModules) {
+	    	   			Integer appId = Integer.parseInt(moduleAlloc.substring(moduleAlloc.length()-1));
+
+		    	   		
+			   		Integer hopcountOF = maxLevel-dev.getLevel();
+		    	   		Integer requestratioOF = subAppsRate[appId];
+		    	   		if ( hopcountOF > 0 ) {
+		    	   			bwRAT.write(hopcountOF+";"+requestratioOF+"\n");		
+		    	   		}
+			   		
+			   		
+	    	   		}
+	       }
+	       
+	       bwCPU.close();
+	       bwRAT.close();
+       
+       } catch (IOException e) {
+   		// TODO Auto-generated catch block
+   		e.printStackTrace();
+   	}       
 		
 	}
 	
@@ -414,6 +511,7 @@ public class ModulePlacementEdgewards extends ModulePlacement{
 						
 					if(totalCpuLoad + getCurrentCpuLoad().get(deviceId) > device.getHost().getTotalMips()){
 						Logger.debug("ModulePlacementEdgeward", "Placement of operator "+moduleName+ "NOT POSSIBLE on device "+device.getName());
+						numOfMigrations++;
 					}
 					else{
 						Logger.debug("ModulePlacementEdgeward", "Placement of operator "+moduleName+ " on device "+device.getName() + " successful.");
@@ -466,6 +564,7 @@ public class ModulePlacementEdgewards extends ModulePlacement{
 			getCurrentModuleLoadMap().get(deviceId).remove(module);
 			getCurrentModuleMap().get(deviceId).remove(module);
 			getCurrentModuleInstanceNum().get(deviceId).remove(module);
+			numOfMigrations++;
 		}
 		
 		getCurrentCpuLoad().put(deviceId, getCurrentCpuLoad().get(deviceId)-totalCpuLoad); // change info of current CPU load on device
@@ -477,9 +576,13 @@ public class ModulePlacementEdgewards extends ModulePlacement{
 			if(id==-1){
 				// Loop has reached the apex fog device in hierarchy, and still could not place modules. 
 				Logger.debug("ModulePlacementEdgeward", "Could not place modules "+modulesToShift+" northwards.");
+				//numOfCloudPlacements++;
 				break;
 			}
 			FogDevice fogDevice = getFogDeviceById(id);
+			if (fogDevice.getLevel()==0) {
+				numOfCloudPlacements++;
+			}
 			if(getCurrentCpuLoad().get(id) + totalCpuLoad > fogDevice.getHost().getTotalMips()){
 				// Device cannot take up CPU load of incoming modules. Keep searching for device further north.
 				List<String> _modulesToShift = findModulesToShift(modulesToShift, id);	// All modules in _modulesToShift are currently placed on device id

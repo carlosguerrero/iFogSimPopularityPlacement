@@ -5,6 +5,10 @@
  */
 package org.fog.placement;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -63,18 +67,26 @@ public class ModulePlacementPopularity extends ModulePlacement {
 	protected Map<FogDevice, List<String>> currentModuleMap = new HashMap<FogDevice, List<String>>();  //Preallocated list of pairs device-module
 	protected List<String> moduleOrder = new ArrayList<String>();  //Order of the modules of the app that need to be respected to accomplish the consumption relationships
 	protected Map<String, List<String>> mapModuleClosure = new HashMap<String, List<String>>();  //The closure of each element in the app graph
+	
+	public int numOfMigrations = 0;
+	public int numOfCloudPlacements = 0;
     
     
 
 //    protected double[][] rateValues; 
 //    protected double[][] deviceSensorRate;
    
+	public Integer aaaa() {
+		return numOfMigrations;
+	}
 
     public ModulePlacementPopularity(List<FogDevice> fogDevices,
             List<Sensor> sensors,
             List<Actuator> actuators,
             Application application,
-            ModuleMapping moduleMapping) {
+            ModuleMapping moduleMapping,
+            Integer[] subAppsRate,
+            String resultsFN) {
 
         this.setFogDevices(fogDevices);
         this.setApplication(application);
@@ -108,7 +120,71 @@ public class ModulePlacementPopularity extends ModulePlacement {
        
        calculate_hop_count();
        
+       System.out.println("NUMERO de migrations:"+numOfMigrations);
+       System.out.println("NUMERO de cloud placements:"+numOfCloudPlacements);
+       
+       
+       try {       
 
+	       File archivoCPU = new File("./CPUpop"+resultsFN+".csv");
+	       File archivoRAT = new File("./RATpop"+resultsFN+".csv");
+	       BufferedWriter bwCPU;
+	       BufferedWriter bwRAT;
+	       
+	
+	       bwCPU = new BufferedWriter(new FileWriter(archivoCPU));
+		
+	       bwRAT = new BufferedWriter(new FileWriter(archivoRAT));
+	       
+	       bwCPU.write("hopcount;cpuusage;cputotal;numservices\n");
+	       bwRAT.write("hopcount;requestratio\n");
+	
+	
+	       
+	       
+	       
+	       
+	       
+	       Integer maxLevel=0;
+	       for(FogDevice dev : getFogDevices()){
+		   		maxLevel = Math.max(dev.getLevel(),maxLevel);
+	       }
+	       
+	       for(FogDevice dev : getFogDevices()){
+	    	   		Integer hopcountOF = maxLevel-dev.getLevel();
+	    	   		Double cpuusageOF = currentCpuLoad.get(dev);
+	    	   		Integer cputotalOF = dev.getHost().getTotalMips();
+	    	   		Integer numservicesOF = currentModuleMap.get(dev).size();
+	    	   		if ( hopcountOF > 0 ) {
+	    	   			bwCPU.write(hopcountOF+";"+cpuusageOF+";"+cputotalOF+";"+numservicesOF+"\n");
+	    	   		}
+	    	   		
+	    	   		
+	    	   		
+	       }
+	       
+	       for(FogDevice dev : getFogDevices()){
+	    	   		List<String> allocatedModules = currentModuleMap.get(dev);
+	    	   		for (String moduleAlloc : allocatedModules) {
+	    	   			Integer appId = Integer.parseInt(moduleAlloc.substring(moduleAlloc.length()-1));
+	    	   			double moduleRateOF = calculateModuleRate(dev, moduleAlloc);
+		    	   		
+			   		Integer hopcountOF = maxLevel-dev.getLevel();
+		    	   		Integer requestratioOF = subAppsRate[appId];
+		    	   		if ( hopcountOF > 0 ) {
+		    	   			bwRAT.write(hopcountOF+";"+requestratioOF+";"+moduleRateOF+"\n");			   		
+		    	   		}
+			   		
+	    	   		}
+	       }
+	       
+	       bwCPU.close();
+	       bwRAT.close();
+       
+       } catch (IOException e) {
+   		// TODO Auto-generated catch block
+   		e.printStackTrace();
+   	}
        
     }
     
@@ -413,6 +489,8 @@ public class ModulePlacementPopularity extends ModulePlacement {
     protected void Placement() {
     	
     		int numOptExecutions = 0;
+    		
+
     	
     		while (modulesToPlace.size()>0) {
     			
@@ -445,6 +523,7 @@ public class ModulePlacementPopularity extends ModulePlacement {
 //					System.out.println("Module "+modName+" in device "+dev.getName()+" allocated because the device is the cloud");
 
 					currentModules.add(modName);//the device is the cloud
+					numOfCloudPlacements++;
 					modulesToPlace.remove(0);
 				}else {
 					double requiredResources = calculateResourceUsage(dev,modName);
@@ -522,7 +601,8 @@ public class ModulePlacementPopularity extends ModulePlacement {
 									Pair<FogDevice,String> pairFather = new Pair<FogDevice,String>(getFogDeviceById(dev.getParentId()),toDeallocMod);
 									atToPendingList(pairFather);
 									currentModuleMap.get(dev).remove(toDeallocMod);
-//									System.out.println("Removed from pre-allocated list the module "+toDeallocMod+" in device "+dev.getName());
+									System.out.println("Removed from pre-allocated list the module "+toDeallocMod+" in device "+dev.getName());
+									numOfMigrations++;
 								}
 								currentMips -= deallocatedResources;  //the deallocated resources are restados.
 								

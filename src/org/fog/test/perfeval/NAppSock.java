@@ -56,14 +56,14 @@ public class NAppSock {
 	static List<Integer> configNumOfNetwroksLevels = new ArrayList<Integer>();
 	static List<Integer> configNumOfRepeatedSubApps = new ArrayList<Integer>();
 	static List<String> configPlacementPolicy = new ArrayList<String>();
-	
+	static int numOfApps = 1;	
 	
 	
 	static Integer numOfNetChildren = 3;
-	static int numOfUsersPerRouter = 2;
+	static int numOfUsersPerRouter = 1;
 	static int numOfNetworkLevels = 3;
-	static int numOfApps = 1;
-	static int numOfRepeatedSubApps = 4;
+
+	static int numOfRepeatedSubApps = 5;
 	static String placementPolicy = "ModulePlacementEdgewards";
 	static int finishTime = 3500;
 // 	static String placementPolicy = "ModulePlacementPopularity";
@@ -105,6 +105,8 @@ public class NAppSock {
 
 
         }
+        
+        String FileNameResults = "a"+numOfRepeatedSubApps+"l"+numOfNetworkLevels+"u"+numOfUsersPerRouter+"c"+numOfNetChildren;
 		
         Config.MAX_SIMULATION_TIME= finishTime;
 		
@@ -244,14 +246,17 @@ public class NAppSock {
 									
 									if (placementPolicy.equals("ModulePlacementPopularity")) {
 										moduleMapping[currentApp] = ModuleMapping.createModuleMapping();
-										modulePlacement = new ModulePlacementPopularity(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp]);
+										modulePlacement = new ModulePlacementPopularity(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp],subAppsRate,FileNameResults);
+										
 									}
 								
 									if (placementPolicy.equals("ModulePlacementEdgewards")) {
 										moduleMapping[currentApp] = ModuleMapping.createModuleMapping();
-										modulePlacement = new ModulePlacementEdgewards(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp]);
+										modulePlacement = new ModulePlacementEdgewards(fogDevices, sensors, actuators, application[currentApp], moduleMapping[currentApp],subAppsRate,FileNameResults);
 									}
-
+									
+									
+System.exit(0);
 									
 									controller.submitApplication(application[currentApp],modulePlacement);				
 
